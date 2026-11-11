@@ -3,6 +3,7 @@ import json
 import os
 import urllib.error
 import urllib.request
+import uuid
 
 CONFIG = {
     'openai': ('OPENAI_API_KEY', 'https://api.openai.com/v1/chat/completions'),
@@ -10,6 +11,8 @@ CONFIG = {
     'openrouter': ('OPENROUTER_API_KEY', 'https://openrouter.ai/api/v1/chat/completions'),
     'anthropic': ('ANTHROPIC_API_KEY', 'https://api.anthropic.com/v1/messages'),
     'deepseek': ('DEEPSEEK_API_KEY', 'https://api.deepseek.com/chat/completions'),
+    # OpenCode Go: gateway tương thích OpenAI (ví dụ MODEL=deepseek-v4.1-flash).
+    'opencode': ('OPENCODE_GO_API_KEY', 'https://opencode.ai/inference/go/openai/v1/chat/completions'),
 }
 
 
@@ -41,6 +44,11 @@ class Provider:
         self.key = os.getenv(key_name)
         if not self.key:
             raise ValueError(f'Thiếu {key_name}; xem README.md.')
+        # OpenCode Go cần User-Agent và một session ID giữ nguyên trong cả conversation.
+        # Mỗi Provider phục vụ một run (eval tạo Provider mới cho mỗi case) nên tạo ID ở đây.
+        self.extra_headers = {}
+        if name == 'opencode':
+            self.extra_headers = {'User-Agent': 'StatusAgentLab/1.0', 'x-opencode-session': str(uuid.uuid4())}
 
     def complete(self, messages, schemas):
         if self.name == 'anthropic':
@@ -48,7 +56,7 @@ class Provider:
         payload = {'model': self.model, 'messages': messages}
         if schemas:
             payload['tools'] = schemas
-        data = post_json(self.url, {'Authorization': f'Bearer {self.key}'}, payload)
+        data = post_json(self.url, {'Authorization': f'Bearer {self.key}', **self.extra_headers}, payload)
         choice = data['choices'][0]
         message = choice['message']
         calls = [{'id': c['id'], 'name': c['function']['name'], 'arguments': c['function']['arguments']} for c in message.get('tool_calls') or []]
